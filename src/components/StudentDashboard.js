@@ -1,154 +1,178 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button, Input, Textarea, Select, SelectItem, Chip } from '@heroui/react';
-import { useToaster } from '@gravity-ui/uikit';
-import { LogOut, ShieldCheck, HardDrive, BookOpen, Upload, Calendar, Clock, Sparkles, CheckCircle2, ClipboardList } from 'lucide-react';
+import { LogOut, Sparkles, Wallet, Bell, ClipboardCheck, CalendarDays, Award, Compass, UserRound, Megaphone, ChevronRight } from 'lucide-react';
 import { signOut } from '@/lib/auth-client';
 import { COURSES_DATA } from '@/data/mockData';
 import { useLanguage } from '@/context/LanguageContext';
+import CourseProgress from './student/CourseProgress';
+import FeeLedger from './student/FeeLedger';
+import StudentNotices from './student/StudentNotices';
+import HomeworkPanel from './student/HomeworkPanel';
+import ClassRoutine from './student/ClassRoutine';
+import CertificatesPanel from './student/CertificatesPanel';
+import ExploreCourses from './student/ExploreCourses';
 
 export default function StudentDashboard({ user }) {
-  const { language, t } = useLanguage();
+  const { language } = useLanguage();
   const isBn = language === 'bn';
   const router = useRouter();
-  const { add } = useToaster();
   const [tab, setTab] = useState('overview');
-  const [admissions, setAdmissions] = useState(null);
-  const [subs, setSubs] = useState([]);
-  const [courseId, setCourseId] = useState(COURSES_DATA[0].id);
-  const [form, setForm] = useState({ title: '', notes: '', link: '' });
-  const [saving, setSaving] = useState(false);
-  const course = COURSES_DATA.find((c) => c.id === courseId) || COURSES_DATA[0];
+  const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [token, setToken] = useState('');
 
-  const loadSubs = () => fetch('/api/homework').then((r) => (r.ok ? r.json() : { submissions: [] })).then((d) => setSubs(d.submissions || [])).catch(() => {});
   useEffect(() => {
-    fetch('/api/admissions').then((r) => (r.ok ? r.json() : { admissions: [] })).then((d) => setAdmissions(d.admissions || [])).catch(() => setAdmissions([]));
-    loadSubs();
+    fetch('/api/student/overview', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { setData(d); setToken((d.admissions.find((a) => a.status === 'enrolled') || d.admissions[0])?.token || ''); })
+      .catch(() => setFailed(true));
   }, []);
 
   const out = async () => { await signOut(); router.push('/'); router.refresh(); };
 
-  const submitHomework = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const res = await fetch('/api/homework', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, courseId }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      add({ name: 'hw', title: isBn ? 'হোমওয়ার্ক জমা হয়েছে' : 'Homework submitted', theme: 'success', autoHiding: 3500 });
-      setForm({ title: '', notes: '', link: '' });
-      loadSubs();
-    } catch (err) {
-      add({ name: 'hw-err', title: isBn ? 'জমা দেওয়া যায়নি' : 'Submission failed', content: err.message, theme: 'danger', autoHiding: 4500 });
-    } finally { setSaving(false); }
-  };
+  const admissions = data?.admissions || [];
+  const admission = useMemo(() => admissions.find((a) => a.token === token) || null, [admissions, token]);
+  const course = admission ? COURSES_DATA.find((c) => c.id === admission.courseId) : null;
+  const notices = data?.notices || [];
+  const urgent = notices.find((n) => n.isUrgent);
+  const photo = data?.profile?.photo || user.image;
+  const displayName = data?.profile?.fullName || user.name;
+  const completeness = data?.completeness ?? 0;
 
   const tabs = [
     ['overview', Sparkles, isBn ? 'ওভারভিউ' : 'Overview'],
-    ['materials', BookOpen, isBn ? 'কোর্স ফাইল' : 'Materials'],
-    ['submit', Upload, isBn ? 'হোমওয়ার্ক' : 'Homework'],
-    ['routine', Calendar, isBn ? 'ক্লাস রুটিন' : 'Routine'],
-  ];
-  const routine = [
-    ['text-emerald-400', 'সাপ্তাহিক ক্লাস ডে: রবি, মঙ্গল, বৃহস্পতি', 'সকাল ১০:০০ - ১২:০০'],
-    ['text-sky-400', 'শুক্রবার স্পেশাল ল্যাব প্র্যাকটিস', 'বিকাল ৩:০০ - ৫:০০'],
-    ['text-amber-400', 'BTEB বোর্ড ফাইনাল মক টেস্ট', 'মাসের শেষ শনিবার'],
+    ['fees', Wallet, isBn ? 'ফি ও কিস্তি' : 'Fees'],
+    ['notices', Bell, isBn ? 'নোটিশ' : 'Notices', notices.filter((n) => n.isUrgent).length],
+    ['homework', ClipboardCheck, isBn ? 'হোমওয়ার্ক' : 'Homework'],
+    ['routine', CalendarDays, isBn ? 'ক্লাস রুটিন' : 'Routine'],
+    ['certificate', Award, isBn ? 'সনদ ও মার্কশিট' : 'Certificates'],
+    ['courses', Compass, isBn ? 'আরও কোর্স' : 'More courses'],
   ];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-6">
-      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          {user.image ? <img src={user.image} alt="" className="w-12 h-12 rounded-2xl object-cover border-2 border-emerald-500/50" referrerPolicy="no-referrer" /> :
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-lg shrink-0">{(user.name || '?').charAt(0).toUpperCase()}</div>}
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6 sm:py-12">
+      {/* Header */}
+      <div className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex min-w-0 items-center gap-3.5">
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photo} alt="" className="h-14 w-14 shrink-0 rounded-2xl border-2 border-emerald-500/50 object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 text-xl font-bold text-emerald-400">{(displayName || '?').charAt(0).toUpperCase()}</div>
+          )}
           <div className="min-w-0">
-            <h1 className="font-bold text-white text-base truncate">{user.name}</h1>
-            <p className="text-xs text-slate-400 font-mono truncate">{user.email}</p>
+            <p className="text-[11px] font-semibold text-emerald-400">{isBn ? 'শিক্ষার্থী ড্যাশবোর্ড' : 'Student dashboard'}</p>
+            <h1 className="truncate text-lg font-extrabold text-white">{displayName}</h1>
+            <p className="truncate font-mono text-xs text-slate-400">{user.email}</p>
           </div>
         </div>
-        <Button color="danger" variant="flat" onPress={out} startContent={<LogOut className="w-4 h-4" />}>{t('btn_logout')}</Button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/student/profile" className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-4 text-sm font-bold text-white transition-colors hover:border-emerald-500/50">
+            <UserRound className="h-4 w-4 text-emerald-400" />{isBn ? 'আমার প্রোফাইল' : 'My profile'}
+          </Link>
+          <button type="button" onClick={out} className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 text-sm font-bold text-rose-300 transition-colors hover:bg-rose-500/20">
+            <LogOut className="h-4 w-4" />{isBn ? 'লগআউট' : 'Log out'}
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-800 pb-2" role="tablist">
-        {tabs.map(([id, Icon, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            className={`whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer ${tab === id ? 'bg-emerald-500 text-slate-950 shadow-md' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'}`}>
-            <Icon className="w-3.5 h-3.5" />{label}
+      {/* Urgent notice banner */}
+      {urgent && (
+        <button type="button" onClick={() => setTab('notices')} className="flex w-full cursor-pointer items-start gap-3 rounded-2xl border border-gold-400/40 bg-gold-400/10 p-4 text-left transition-colors hover:bg-gold-400/15">
+          <Megaphone className="mt-0.5 h-5 w-5 shrink-0 text-gold-400" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-bold text-gold-300">{isBn ? 'জরুরি নোটিশ' : 'Urgent notice'}</span>
+            <span className="block text-sm text-slate-100">{isBn ? urgent.titleBn : urgent.titleEn || urgent.titleBn}</span>
+          </span>
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-gold-300" />
+        </button>
+      )}
+
+      {/* Tabs */}
+      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0" role="tablist">
+        {tabs.map(([id, Icon, label, badge]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`flex h-10 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border px-3.5 text-xs font-bold transition-colors ${
+              tab === id ? 'border-emerald-500 bg-emerald-500 text-slate-950' : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-600 hover:text-white'
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />{label}
+            {badge > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">{badge}</span>}
           </button>
         ))}
       </div>
 
-      {tab === 'overview' && (
-        <div className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Link href="/drive" className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 flex items-center gap-3 text-sm font-bold text-white"><HardDrive className="w-5 h-5 text-amber-400" />{isBn ? 'গুগল ড্রাইভ পোর্টাল' : 'Google Drive portal'}</Link>
-            <Link href="/verify" className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 flex items-center gap-3 text-sm font-bold text-white"><ShieldCheck className="w-5 h-5 text-sky-400" />{isBn ? 'সনদ যাচাই' : 'Verify certificate'}</Link>
-          </div>
-          <section className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-            <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><ClipboardList className="w-4 h-4 text-emerald-400" />{isBn ? 'আমার ভর্তি আবেদনসমূহ' : 'My admission applications'}</h2>
-            {admissions === null ? <p className="text-xs text-slate-400">…</p> : admissions.length === 0 ? (
-              <p className="text-xs text-slate-400">{isBn ? 'এখনও কোনো আবেদন নেই।' : 'No applications yet.'} <Link href="/admission" className="text-emerald-400 font-bold">{isBn ? 'ভর্তি আবেদন করুন' : 'Apply now'}</Link></p>
-            ) : (
-              <ul className="space-y-2">
-                {admissions.map((a) => (
-                  <li key={a.token} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="min-w-0"><div className="font-semibold text-white">{a.courseName}</div><div className="font-mono text-emerald-400">{a.token}</div></div>
-                    <Chip size="sm" color={a.status === 'enrolled' ? 'success' : a.status === 'verified' ? 'primary' : 'warning'} variant="flat">{a.status}</Chip>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-      )}
+      {failed && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">{isBn ? 'ড্যাশবোর্ডের তথ্য লোড করা যায়নি। পেজটি রিলোড করুন।' : 'Could not load dashboard data. Please reload.'}</p>}
+      {!data && !failed && <div className="space-y-3" aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-900" />)}</div>}
 
-      {tab === 'materials' && (
-        <div className="space-y-3">
-          <Select variant="bordered" label={isBn ? 'কোর্স নির্বাচন করুন' : 'Select course'} selectedKeys={[courseId]} disallowEmptySelection onSelectionChange={(k) => k.currentKey && setCourseId(k.currentKey)}>
-            {COURSES_DATA.map((c) => <SelectItem key={c.id}>{isBn ? c.titleBn : c.titleEn}</SelectItem>)}
-          </Select>
-          <ul className="space-y-2">
-            {course.modules.map((m, i) => (
-              <li key={i} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-2.5 text-xs text-slate-200"><span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0">{i + 1}</span>{m}</li>
-            ))}
-          </ul>
-          <p className="text-xs text-slate-400">{isBn ? 'লেকচার শিট ও প্রজেক্ট ফাইল গুগল ড্রাইভে সংরক্ষিত।' : 'Lecture sheets and project files are stored in Google Drive.'} <Link href="/drive" className="text-amber-300 font-bold">{isBn ? 'ড্রাইভ পোর্টালে যান' : 'Open Drive portal'}</Link></p>
-        </div>
-      )}
-
-      {tab === 'submit' && (
-        <div className="space-y-4">
-          <form onSubmit={submitHomework} className="space-y-3">
-            <Select variant="bordered" label={isBn ? 'কোর্স' : 'Course'} selectedKeys={[courseId]} disallowEmptySelection onSelectionChange={(k) => k.currentKey && setCourseId(k.currentKey)}>
-              {COURSES_DATA.map((c) => <SelectItem key={c.id}>{isBn ? c.titleBn : c.titleEn}</SelectItem>)}
-            </Select>
-            <Input isRequired variant="bordered" label={isBn ? 'অ্যাসাইনমেন্ট বা প্রজেক্টের নাম' : 'Assignment / project title'} value={form.title} onValueChange={(v) => setForm((f) => ({ ...f, title: v }))} />
-            <Input type="url" variant="bordered" label={isBn ? 'ড্রাইভ শেয়ার লিংক (ঐচ্ছিক)' : 'Drive share link (optional)'} placeholder="https://drive.google.com/..." value={form.link} onValueChange={(v) => setForm((f) => ({ ...f, link: v }))} />
-            <Textarea variant="bordered" label={isBn ? 'মন্তব্য (ঐচ্ছিক)' : 'Notes (optional)'} value={form.notes} onValueChange={(v) => setForm((f) => ({ ...f, notes: v }))} />
-            <Button type="submit" isLoading={saving} fullWidth className="bg-emerald-500 text-slate-950 font-bold">{isBn ? 'হোমওয়ার্ক সাবমিট করুন' : 'Submit homework'}</Button>
-          </form>
-          {subs.length > 0 && (
-            <ul className="space-y-2">
-              {subs.map((s, i) => (
-                <li key={i} className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /><span className="text-slate-200 font-semibold truncate">{s.title}</span><span className="ml-auto text-slate-500 font-mono shrink-0">{new Date(s.createdAt).toLocaleDateString(isBn ? 'bn-BD' : 'en-US')}</span></li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {tab === 'routine' && (
-        <div className="space-y-3">
-          {routine.map(([c, a, b]) => (
-            <div key={a} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
-              <div className="flex items-center gap-2"><Clock className={`w-4 h-4 ${c}`} /><span className="font-bold text-white">{a}</span></div>
-              <span className={`${c} font-mono text-[11px] font-bold`}>{b}</span>
+      {data && (
+        <>
+          {admissions.length > 1 && (tab === 'overview' || tab === 'fees' || tab === 'routine') && (
+            <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
+              <label htmlFor="enrol" className="shrink-0 text-xs font-bold text-slate-300">{isBn ? 'কোর্স:' : 'Course:'}</label>
+              <select id="enrol" value={token} onChange={(e) => setToken(e.target.value)} className="h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-white focus:border-emerald-500 focus:outline-none">
+                {admissions.map((a) => <option key={a.token} value={a.token}>{a.courseName} · {a.token}</option>)}
+              </select>
             </div>
-          ))}
-        </div>
+          )}
+
+          {tab === 'overview' && (
+            <div className="space-y-5">
+              <CourseProgress admission={admission} course={course} />
+              {admission && <FeeLedger admission={admission} payments={data.payments} compact onMore={() => setTab('fees')} />}
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  [ClipboardCheck, isBn ? 'হোমওয়ার্ক' : 'Homework', isBn ? 'জমা দিন ও স্ট্যাটাস দেখুন' : 'Submit & track', 'homework', 'text-sky-300 bg-sky-500/10'],
+                  [Award, isBn ? 'সনদ ও মার্কশিট' : 'Certificates', `${data.certificates.length} ${isBn ? 'টি' : 'available'}`, 'certificate', 'text-gold-300 bg-gold-400/10'],
+                  [Compass, isBn ? 'আরও কোর্স' : 'More courses', isBn ? 'ছাড়ে ভর্তি হোন' : 'Enrol at a discount', 'courses', 'text-violet-300 bg-violet-500/10'],
+                ].map(([Icon, title, sub, go, tone]) => (
+                  <button key={go} type="button" onClick={() => setTab(go)} className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition-colors hover:border-emerald-500/40">
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-5 w-5" /></span>
+                    <span><span className="block text-sm font-bold text-white">{title}</span><span className="block text-xs text-slate-400">{sub}</span></span>
+                  </button>
+                ))}
+              </div>
+
+              {completeness < 100 && (
+                <div className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:flex-row sm:items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-white">{isBn ? `আপনার প্রোফাইল ${completeness.toLocaleString('bn-BD')}% সম্পূর্ণ` : `Your profile is ${completeness}% complete`}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">{isBn ? 'ছবি, ঠিকানা ও SSC/HSC-র তথ্য যোগ করুন।' : 'Add your photo, address and SSC/HSC details.'}</p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${completeness}%` }} /></div>
+                  </div>
+                  <Link href="/student/profile" className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-500 px-5 text-sm font-extrabold text-slate-950 hover:bg-emerald-400">{isBn ? 'প্রোফাইল সম্পূর্ণ করুন' : 'Complete profile'}</Link>
+                </div>
+              )}
+
+              <StudentNotices notices={notices.slice(0, 3)} compact onMore={() => setTab('notices')} />
+            </div>
+          )}
+
+          {tab === 'fees' && (admission ? <FeeLedger admission={admission} payments={data.payments} /> : <EmptyEnrol isBn={isBn} />)}
+          {tab === 'notices' && <StudentNotices notices={notices} />}
+          {tab === 'homework' && <HomeworkPanel defaultCourseId={admission?.courseId} />}
+          {tab === 'routine' && <ClassRoutine admission={admission} course={course} />}
+          {tab === 'certificate' && <CertificatesPanel certificates={data.certificates} />}
+          {tab === 'courses' && <ExploreCourses enrolledIds={admissions.map((a) => a.courseId)} />}
+        </>
       )}
+    </div>
+  );
+}
+
+function EmptyEnrol({ isBn }) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
+      <p className="text-sm text-slate-300">{isBn ? 'এখনও কোনো ভর্তি আবেদন পাওয়া যায়নি।' : 'No admission found yet.'}</p>
+      <Link href="/admission" className="mt-4 inline-flex h-10 items-center rounded-xl bg-emerald-500 px-5 text-sm font-extrabold text-slate-950 hover:bg-emerald-400">{isBn ? 'ভর্তি আবেদন করুন' : 'Apply now'}</Link>
     </div>
   );
 }

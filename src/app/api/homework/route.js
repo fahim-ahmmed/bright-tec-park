@@ -9,11 +9,13 @@ async function getSession(req) {
   try { return await getAuth().api.getSession({ headers: req.headers }); } catch { return null; }
 }
 
+// status values: submitted | reviewed | revision  (an admin/mentor panel will change these later)
 export async function GET(req) {
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const rows = await getDb().collection('homework').find({ userId: session.user.id }, { projection: { _id: 0 } }).sort({ createdAt: -1 }).limit(20).toArray();
-  return NextResponse.json({ submissions: rows });
+  const rows = await getDb().collection('homework').find({ userId: session.user.id }).sort({ createdAt: -1 }).limit(50).toArray();
+  const submissions = rows.map(({ _id, ...r }) => ({ id: String(_id), status: 'submitted', mentorNote: '', ...r }));
+  return NextResponse.json({ submissions });
 }
 
 export async function POST(req) {
@@ -28,7 +30,9 @@ export async function POST(req) {
   if (link && !/^https?:\/\//i.test(link)) return NextResponse.json({ error: 'লিংক http:// বা https:// দিয়ে শুরু হতে হবে।' }, { status: 400 });
   await getDb().collection('homework').insertOne({
     userId: session.user.id, studentName: session.user.name, studentEmail: session.user.email,
-    courseId: clean(body.courseId, 60), title, notes, link, createdAt: new Date().toISOString(),
+    courseId: clean(body.courseId, 60), title, notes, link,
+    status: 'submitted', mentorNote: '',
+    createdAt: new Date().toISOString(),
   });
   return NextResponse.json({ success: true });
 }
