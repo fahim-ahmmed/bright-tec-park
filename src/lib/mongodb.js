@@ -1,15 +1,31 @@
+
 import { MongoClient } from 'mongodb';
 
-// One MongoClient per server process (survives hot-reload in dev).
-export function getMongoClient() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI is not set. Copy .env.example to .env.local.');
-  if (!globalThis._bengalMongoClient) {
-    globalThis._bengalMongoClient = new MongoClient(uri);
-  }
-  return globalThis._bengalMongoClient;
+const uri = process.env.MONGODB_URI;
+const options = {};
+
+if (!uri) {
+  throw new Error(
+    'MONGODB_URI is not set. Please configure it in .env.local.'
+  );
 }
 
-export function getDb() {
-  return getMongoClient().db(process.env.MONGODB_DB || undefined);
+const globalWithMongo = globalThis;
+
+const clientPromise =
+  globalWithMongo._bengalMongoClientPromise ??
+  (globalWithMongo._bengalMongoClientPromise = new MongoClient(
+    uri,
+    options
+  ).connect());
+
+export async function getMongoClient() {
+  return clientPromise;
+}
+
+export async function getDb() {
+  const client = await getMongoClient();
+  const dbName = process.env.MONGODB_DB;
+
+  return dbName ? client.db(dbName) : client.db();
 }

@@ -3,9 +3,7 @@ import './globals.css';
 import { Hind_Siliguri, Outfit } from 'next/font/google';
 import Script from 'next/script';
 import Providers from './providers';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
-import WhatsAppChatFAB from '@/components/WhatsAppChatFAB';
+import SiteShell from '@/components/SiteShell';
 
 const hind = Hind_Siliguri({
   subsets: ['bengali', 'latin'],
@@ -40,12 +38,7 @@ export default function RootLayout({ children }) {
       >
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeInit }} />
         <Providers>
-          <div className="min-h-screen flex flex-col">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
-            <WhatsAppChatFAB />
-          </div>
+          <SiteShell>{children}</SiteShell>
         </Providers>
       </body>
     </html>
